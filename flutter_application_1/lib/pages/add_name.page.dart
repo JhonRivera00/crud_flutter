@@ -1,3 +1,4 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services/firebase_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,36 +16,57 @@ class _AddNamePageState extends State<AddNamePage> {
   TextEditingController nameController = TextEditingController(text: "");
   bool _isLoading = false;
   Future<void> _addName() async {
-    setState(() {
-      _isLoading = true;
-    });
     final name = nameController.text;
     final prefs = await SharedPreferences.getInstance();
-    try {
-      await addPeople(name);
-      await _uploadPendingData();
-
-      if (mounted) {
-        // Verifica si el widget sigue montado
-        Navigator.pop(context); // Vuelve a la página anterior
-      }
-    } catch (e) {
-      // Manejo de error: almacenar localmente si falla al intentar enviar
+    final connectivityResult = await Connectivity().checkConnectivity();
+    // ignore: unrelated_type_equality_checks
+    if (connectivityResult == ConnectivityResult.none) {
+      // No hay conexión a Internet
       final List<String> names = prefs.getStringList('pending_names') ?? [];
       names.add(name);
       await prefs.setStringList('pending_names', names);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content:
-                  Text('No se pudo conectar. Nombre guardado localmente: $e')),
+          const SnackBar(
+              content: Text(
+                  'No hay conexión a Internet. Nombre guardado localmente.')),
         );
       }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false; // Ocultar el indicador de carga
+    } else {
+      setState(() {
+        _isLoading = true;
+      });
+      try {
+        await addPeople(name);
+        await _uploadPendingData().then((_) {
+          setState(() {
+            _isLoading = false; // Ocultar el indicador de carga
+          });
         });
+
+        if (mounted) {
+          // Verifica si el widget sigue montado
+          Navigator.pop(context);
+          // Vuelve a la página anterior
+        }
+      } catch (e) {
+        // Manejo de error: almacenar localmente si falla al intentar enviar
+        final List<String> names = prefs.getStringList('pending_names') ?? [];
+        names.add(name);
+        await prefs.setStringList('pending_names', names);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(
+                    'No se pudo conectar. Nombre guardado localmente: $e')),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false; // Ocultar el indicador de carga
+          });
+        }
       }
     }
   }
@@ -59,6 +81,9 @@ class _AddNamePageState extends State<AddNamePage> {
       } catch (e) {
         // Podrías registrar el error aquí para depuración
         print('Error al subir nombre pendiente: $e');
+        setState(() {
+          _isLoading = false;
+        });
         continue;
       }
     }
@@ -82,6 +107,7 @@ class _AddNamePageState extends State<AddNamePage> {
                     children: [
                       TextField(
                         controller: nameController,
+                        autofocus: true,
                         decoration: const InputDecoration(
                           hintText: 'Ingrese el nombre',
                         ),
